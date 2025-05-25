@@ -7,6 +7,8 @@ experimental repo for Fin Analytics and ML at UCL
 
 ### Methodology (RL & Q-Learning)
 - explorations vs exploitation trade-off
+- Markov Decision Process (MDP) framework
+- no transaction costs
 - Q-learning is suitable in cases where the specific probabilities, rewards, and penalties are not completely known, as the agent traverses the environment repeatedly to learn the best strategy by itself. (1)
 
 ### Results
