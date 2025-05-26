@@ -139,7 +139,7 @@ class StockTradingEnv:
                 # Calculate buy amount based on quantity level
                 if qty_level == 1:
                     buy_value = available_position_value * 0.25
-                else:  # qty_level == 2
+                else: # qty_level == 2:
                     buy_value = available_position_value * 0.5
                 
                 # Ensure we don't exceed available cash

@@ -2,8 +2,18 @@
 experimental repo for Fin Analytics and ML at UCL
 
 ## Important Points (to include in presentation)
-### Problem Statement
-- 
+### Problem Statement (Iman)
+- comparison of Q-learning vs Linear Models
+- comparison of performance across different time periods
+- comparison of introducing additional actions
+
+- Does the model still perform well if a period of crisis or instability is used as the training?
+    - Training: only crisis or only stable
+    - Test: on both
+
+- Problems
+    - Action definition: buy/sell, but how much? 
+    - Different market periods: stable, crisis, etc.
 
 ### Choices
 - explain why 2015 - 2019 is a stable period
@@ -12,11 +22,18 @@ experimental repo for Fin Analytics and ML at UCL
 - 
 
 ### Methodology (RL & Q-Learning)
-- explorations vs exploitation trade-off
-- Markov Decision Process (MDP) framework
-- Q-learning is suitable in cases where the specific probabilities, rewards, and penalties are not completely known, as the agent traverses the environment repeatedly to learn the best strategy by itself. (1)
+- (Gabriella / Ariq) What RL is?
+    - Markov Decision Process (MDP) framework
+- (Gabriella / Ariq) Linear Model vs. Q-Learning
+    - explorations vs exploitation trade-off
+    - Q-learning is suitable in cases where the specific probabilities, rewards, and penalties are not completely known, as the agent traverses the environment repeatedly to learn the best strategy by itself. (1)
+- (Rickey) Types of Q-Learning
+- (Iman) Code Implementation
 
-### Results
+
+### (Aadhira/Iman) Results
+- Tables
+- Visualisations
 
 
 ## Reference Links
@@ -26,22 +43,38 @@ experimental repo for Fin Analytics and ML at UCL
 ### Tasks
 All - compare performance to market index 
 
+Time periods
+- Stable: Train (2017 - 2018) & Test (2019)
+- Financial Crisis: Train (Oct 2007 to March 2009) & Test (April 2009 to Dec 2009)
+- Covid: Train (2020 - 2022) & Test (2023)
+
+
 1. RL Linear Model
     - Gabriella - stable period (define what stable means)
     - Ariq - crisis
-
+    - Produce one results table: Returns from the model in test period.
+                Stable      Crisis 1    Crisis 2
+    Model 1
+    Model 2
+    S&P
+    - Produce visualisation also comparing performance
 
 2. RL Q Learning
     - Rickey - Financial crisis
     - Aadhira - covid
     - Iman - stable
 
+                            Stable      Crisis 1    Crisis 2
+    Q-learning (basic)
+    Q-learning (DL)
+    S&P
+    - visualisations
+
 
 ### Environment / State
 - S&P 500 stocks (top 6)
-- Buy, Sell, Hold - Allow short sale
+- Buy, Sell, Hold
 - Quantity of each stock
-- Subset of stock (which stocks)
 
 
 
@@ -130,3 +163,9 @@ While 2017 was exceptionally stable, 2018-2019 had some notable volatility. Howe
     - It can sell up to 100% of a position (quantity_level = 3)
 
 - Short sales are currently not implemented.
+
+
+# TODO 
+- implement comparison of equal weighted portfolio for test
+- implement comparison with buy and hold of S&P
+- add visualisation
