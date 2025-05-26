@@ -15,6 +15,7 @@ from datetime import datetime
 from get_stock_data import get_stock_data, get_sp500_return
 import pickle
 import warnings
+import os
 
 warnings.filterwarnings("ignore")
 
@@ -68,6 +69,12 @@ class StockTradingEnv:
         state = []
         
         # Add portfolio information (discretized)
+        # Calculate portfolio value and convert to a discrete bucket (0-4)
+        # Bucket 0: Portfolio < 20% of initial balance
+        # Bucket 1: 20-40% of initial balance
+        # Bucket 2: 40-60% of initial balance
+        # Bucket 3: 60-80% of initial balance
+        # Bucket 4: 80-100%+ of initial balance
         portfolio_value = self._get_portfolio_value()
         portfolio_ratio = portfolio_value / self.initial_balance
         portfolio_bucket = min(int(portfolio_ratio * 5), 4)  # 5 buckets
@@ -75,18 +82,32 @@ class StockTradingEnv:
         
         # Add position information for each stock
         for symbol in self.symbols:
-            # Position size (discretized)
+            # Position size (discretized into 5 buckets)
+            # Bucket 0: Position < 20% of portfolio value
+            # Bucket 1: Position 20-40% of portfolio value
+            # Bucket 2: Position 40-60% of portfolio value
+            # Bucket 3: Position 60-80% of portfolio value
+            # Bucket 4: Position 80-100% of portfolio value
             position_value = self.positions[symbol] * self.prices[symbol][self.current_step]
             position_ratio = position_value / portfolio_value
             position_bucket = min(int(position_ratio * 5), 4)  # 5 buckets
             state.append(position_bucket)
             
-            # Price momentum (last 3 days)
+            # Calculate price momentum using 3-day moving average
             if self.current_step >= 3:
+                # Sum returns over last 3 days to get momentum
                 momentum = sum(self.returns[symbol][self.current_step-i] for i in range(1, 4))
-                momentum_bucket = min(int((momentum + 0.1) * 10), 9)  # 10 buckets
+                # Convert momentum to discrete bucket (0-9)
+                #   Bucket 0: Strong negative momentum (< -0.1)
+                #   Bucket 1-4: Moderate to slight negative momentum (-0.1 to 0)
+                #   Bucket 5: Neutral momentum (0)
+                #   Bucket 6-9: Slight to strong positive momentum (0 to 0.1)
+                # Add 0.1 offset to center buckets around 0
+                # Multiply by 10 to spread values across buckets
+                momentum_bucket = min(int((momentum + 0.1) * 10), 9)
             else:
-                momentum_bucket = 5  # neutral
+                # Default to neutral bucket (5) if not enough history
+                momentum_bucket = 5
             state.append(momentum_bucket)
         
         return np.array(state)
@@ -277,13 +298,18 @@ def train_agent(env: StockTradingEnv, agent: QLearningAgent, episodes: int = 100
                   f"Final Portfolio Value: ${final_portfolio_value:,.2f}, "
                   f"Exploration Rate: {agent.exploration_rate:.3f}")
 
-def test_agent(env: StockTradingEnv, agent: QLearningAgent) -> float:
+def test_agent(env: StockTradingEnv, agent: QLearningAgent) -> Tuple[float, pd.DataFrame]:
     """
     Test the trained agent on new data (greedy policy, no learning).
-    Returns the final portfolio value.
+    Returns the final portfolio value and position history.
     """
     state = env.reset()
     done = False
+    
+    # Initialize position history
+    position_history = []
+    dates = env.prices[env.symbols[0]].index
+    
     while not done:
         actions = []
         for _ in range(len(env.stocks)):
@@ -295,17 +321,38 @@ def test_agent(env: StockTradingEnv, agent: QLearningAgent) -> float:
             action_type = action_idx // 3
             quantity_level = (action_idx % 3) + 1
             actions.append((action_type, quantity_level))
+        
+        # Record positions before step
+        current_positions = {
+            'date': dates[env.current_step],
+            'portfolio_value': env._get_portfolio_value(),
+            'cash': env.balance
+        }
+        for symbol in env.symbols:
+            current_positions[symbol] = env.positions[symbol]
+        position_history.append(current_positions)
+        
         next_state, reward, done, info = env.step(actions)
         state = next_state
+    
+    # Convert position history to DataFrame
+    position_df = pd.DataFrame(position_history)
+    position_df.set_index('date', inplace=True)
+    
     final_value = info['portfolio_value']
-    return final_value
+    return final_value, position_df
 
 
 
 if __name__ == "__main__":
+    # Create results directory if it doesn't exist
+    results_dir = "results"
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    
     # TRAINING
     stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA"]
-    train_start = datetime(2015, 1, 1)
+    train_start = datetime(2017, 1, 1)
     train_end = datetime(2018, 12, 31)
     env = StockTradingEnv(stocks=stocks, initial_balance=100000, max_position=0.5)
     env.symbols, env.data = get_stock_data(stocks=stocks, start_date=train_start, end_date=train_end)
@@ -319,12 +366,12 @@ if __name__ == "__main__":
         learning_rate=0.2,
         discount_factor=0.99,
         exploration_rate=1.0,
-        exploration_decay=0.999,
-        min_exploration_rate=0.01
+        exploration_decay=0.9995,     # Slower decay
+        min_exploration_rate=0.02,      # Higher minimum exploration
     )
     train_agent(env, agent, episodes=1000)
     # Save Q-table
-    with open("q_table.pkl", "wb") as f:
+    with open(os.path.join(results_dir, "q_table.pkl"), "wb") as f:
         pickle.dump(agent.q_table, f)
 
     # TESTING
@@ -335,20 +382,48 @@ if __name__ == "__main__":
     test_env.prices = {symbol: test_env.data[symbol]['data']['Close'] for symbol in test_env.symbols}
     test_env.returns = {symbol: test_env.prices[symbol].pct_change().fillna(0) for symbol in test_env.symbols}
     # Load Q-table
-    with open("q_table.pkl", "rb") as f:
+    with open(os.path.join(results_dir, "q_table.pkl"), "rb") as f:
         agent.q_table = pickle.load(f)
-    final_value = test_agent(test_env, agent)
+    
+    final_value, position_history = test_agent(test_env, agent)
     agent_return = (final_value - 100000) / 100000
-    print(f"\nAgent Test Results (2019-2022):")
+    
+    # Save position history
+    position_history.to_csv(os.path.join(results_dir, "position_history.csv"))
+    
+    # Get S&P 500 benchmark
+    sp500_return, sp500_start, sp500_end = get_sp500_return(test_start, test_end)
+    
+    # Create results summary
+    results = {
+        'Metric': ['Initial Portfolio Value', 'Final Portfolio Value', 'Total Return', 
+                  'S&P 500 Start Price', 'S&P 500 End Price', 'S&P 500 Return',
+                  'Outperformance'],
+        'Value': [
+            f'${100000:,.2f}',
+            f'${final_value:,.2f}',
+            f'{agent_return*100:.2f}%',
+            f'${sp500_start:,.2f}',
+            f'${sp500_end:,.2f}',
+            f'{sp500_return*100:.2f}%',
+            f'{(agent_return - sp500_return)*100:.2f}%'
+        ]
+    }
+    
+    # Save results summary
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(os.path.join(results_dir, "results_summary.csv"), index=False)
+    
+    # Print results
+    print(f"\nAgent Test Results (2019):")
     print(f"  Final Portfolio Value: ${final_value:,.2f}")
     print(f"  Total Return: {agent_return*100:.2f}%")
-    # S&P 500 Benchmark
-    sp500_return, sp500_start, sp500_end = get_sp500_return(test_start, test_end)
-    print(f"\nS&P 500 Benchmark (2019-2022):")
+    print(f"\nS&P 500 Benchmark (2019):")
     print(f"  Start Price: ${sp500_start:,.2f}")
     print(f"  End Price:   ${sp500_end:,.2f}")
     print(f"  Total Return: {sp500_return*100:.2f}%")
-    # Comparison
+    print(f"\nOutperformance: {(agent_return - sp500_return)*100:.2f}%")
+    
     if agent_return > sp500_return:
         print("\nAgent outperformed the S&P 500!")
     else:
