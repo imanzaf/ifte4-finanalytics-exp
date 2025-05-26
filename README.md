@@ -5,10 +5,15 @@ experimental repo for Fin Analytics and ML at UCL
 ### Problem Statement
 - 
 
+### Choices
+- explain why 2015 - 2019 is a stable period
+- no transaction costs
+- agent has 2 layers of actions (buy/sell/hold) and quantity level (25% or 50%)
+- 
+
 ### Methodology (RL & Q-Learning)
 - explorations vs exploitation trade-off
 - Markov Decision Process (MDP) framework
-- no transaction costs
 - Q-learning is suitable in cases where the specific probabilities, rewards, and penalties are not completely known, as the agent traverses the environment repeatedly to learn the best strategy by itself. (1)
 
 ### Results

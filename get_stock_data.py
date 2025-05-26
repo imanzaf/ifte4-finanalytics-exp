@@ -4,6 +4,20 @@ import numpy as np
 from datetime import datetime, timedelta
 import os
 
+
+def get_sp500_return(start_date, end_date):
+    """
+    Get S&P 500 return for the given period.
+    """
+    sp500 = yf.Ticker('^GSPC')
+    hist = sp500.history(start=start_date, end=end_date)
+    if hist.empty:
+        raise ValueError("No S&P500 data for the given period.")
+    start_price = hist['Close'].iloc[0]
+    end_price = hist['Close'].iloc[-1]
+    return (end_price - start_price) / start_price, start_price, end_price
+
+
 def get_stock_data(stocks: list[str] = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA"], 
                         start_date: datetime = datetime(2024, 1, 1), 
                         end_date: datetime = datetime(2024, 12, 31),
