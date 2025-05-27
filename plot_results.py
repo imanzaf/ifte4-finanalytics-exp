@@ -4,6 +4,26 @@ from datetime import datetime
 import yfinance as yf
 import os
 
+def calculate_equal_weighted_returns(position_history, stocks):
+    """Calculate returns for an equal-weighted portfolio"""
+    # Get stock data for all stocks
+    stock_data = {}
+    for stock in stocks:
+        stock_data[stock] = yf.download(stock, 
+                                      start=position_history.index[0],
+                                      end=position_history.index[-1])
+    
+    # Calculate daily returns for each stock
+    returns = pd.DataFrame(index=position_history.index)
+    for stock in stocks:
+        returns[stock] = stock_data[stock]['Close'].pct_change()
+    
+    # Calculate equal-weighted portfolio returns
+    returns['equal_weighted'] = returns.mean(axis=1)
+    returns['cumulative_equal_weighted'] = (1 + returns['equal_weighted']).cumprod() - 1
+    
+    return returns
+
 def plot_portfolio_comparison():
     # Load position history
     position_history = pd.read_csv('results/position_history.csv', index_col='date', parse_dates=True)
@@ -21,34 +41,52 @@ def plot_portfolio_comparison():
     sp500['return'] = sp500['Close'].pct_change()
     sp500['cumulative_return'] = (1 + sp500['return']).cumprod() - 1
     
-    # Create the plot
-    plt.figure(figsize=(12, 6))
+    # Calculate equal-weighted portfolio returns
+    stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA"]
+    returns = calculate_equal_weighted_returns(position_history, stocks)
     
-    # Plot cumulative returns
-    plt.plot(position_history.index, 
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
+    
+    # Plot 1: Agent vs S&P 500
+    ax1.plot(position_history.index, 
              position_history['cumulative_return'] * 100,
              label='Q-Learning Agent',
              linewidth=2)
     
-    plt.plot(sp500.index,
+    ax1.plot(sp500.index,
              sp500['cumulative_return'] * 100,
              label='S&P 500',
              linewidth=2)
     
-    # Customize the plot
-    plt.title('Portfolio Performance Comparison (2019)', fontsize=14)
-    plt.xlabel('Date', fontsize=12)
-    plt.ylabel('Cumulative Return (%)', fontsize=12)
-    plt.grid(True, linestyle='--', alpha=0.7)
-    plt.legend(fontsize=10)
+    ax1.set_title('Q-Learning Agent vs S&P 500 (2019)', fontsize=14)
+    ax1.set_xlabel('Date', fontsize=12)
+    ax1.set_ylabel('Cumulative Return (%)', fontsize=12)
+    ax1.grid(True, linestyle='--', alpha=0.7)
+    ax1.legend(fontsize=10)
+    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax1.tick_params(axis='x', rotation=45)
     
-    # Format y-axis as percentage
-    plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    # Plot 2: Agent vs Equal-Weighted
+    ax2.plot(position_history.index, 
+             position_history['cumulative_return'] * 100,
+             label='Q-Learning Agent',
+             linewidth=2)
     
-    # Rotate x-axis labels for better readability
-    plt.xticks(rotation=45)
+    ax2.plot(returns.index,
+             returns['cumulative_equal_weighted'] * 100,
+             label='Equal-Weighted Portfolio',
+             linewidth=2)
     
-    # Adjust layout to prevent label cutoff
+    ax2.set_title('Q-Learning Agent vs Equal-Weighted Portfolio (2019)', fontsize=14)
+    ax2.set_xlabel('Date', fontsize=12)
+    ax2.set_ylabel('Cumulative Return (%)', fontsize=12)
+    ax2.grid(True, linestyle='--', alpha=0.7)
+    ax2.legend(fontsize=10)
+    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax2.tick_params(axis='x', rotation=45)
+    
+    # Adjust layout
     plt.tight_layout()
     
     # Save the plot
