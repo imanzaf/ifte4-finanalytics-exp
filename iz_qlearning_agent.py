@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore")
 class StockTradingEnv:
     def __init__(self, 
                  stocks: List[str],
-                 initial_balance: float = 100000.0,
+                 initial_balance: float = 10000.0,
                  max_position: float = 0.5):      # Maximum 50% of portfolio in one stock
         """
         Initialize the trading environment.
@@ -342,7 +342,28 @@ def test_agent(env: StockTradingEnv, agent: QLearningAgent) -> Tuple[float, pd.D
     final_value = info['portfolio_value']
     return final_value, position_df
 
-
+def calculate_equal_weighted_return(env: StockTradingEnv) -> Tuple[float, float]:
+    """
+    Calculate the return of an equal-weighted portfolio of all stocks.
+    Returns (final_value, total_return)
+    """
+    initial_balance = env.initial_balance
+    balance_per_stock = initial_balance / len(env.symbols)
+    
+    # Calculate initial shares for each stock
+    initial_shares = {}
+    for symbol in env.symbols:
+        initial_price = env.prices[symbol][0]
+        initial_shares[symbol] = int(balance_per_stock / initial_price)
+    
+    # Calculate final value
+    final_value = 0
+    for symbol in env.symbols:
+        final_price = env.prices[symbol][-1]
+        final_value += initial_shares[symbol] * final_price
+    
+    total_return = (final_value - initial_balance) / initial_balance
+    return final_value, total_return
 
 if __name__ == "__main__":
     # Create results directory if it doesn't exist
@@ -388,6 +409,9 @@ if __name__ == "__main__":
     final_value, position_history = test_agent(test_env, agent)
     agent_return = (final_value - 100000) / 100000
     
+    # Calculate equal-weighted portfolio performance
+    equal_weighted_value, equal_weighted_return = calculate_equal_weighted_return(test_env)
+    
     # Save position history
     position_history.to_csv(os.path.join(results_dir, "position_history.csv"))
     
@@ -397,16 +421,20 @@ if __name__ == "__main__":
     # Create results summary
     results = {
         'Metric': ['Initial Portfolio Value', 'Final Portfolio Value', 'Total Return', 
+                  'Equal-Weighted Portfolio Value', 'Equal-Weighted Return',
                   'S&P 500 Start Price', 'S&P 500 End Price', 'S&P 500 Return',
-                  'Outperformance'],
+                  'Outperformance vs S&P 500', 'Outperformance vs Equal-Weighted'],
         'Value': [
             f'${100000:,.2f}',
             f'${final_value:,.2f}',
             f'{agent_return*100:.2f}%',
+            f'${equal_weighted_value:,.2f}',
+            f'{equal_weighted_return*100:.2f}%',
             f'${sp500_start:,.2f}',
             f'${sp500_end:,.2f}',
             f'{sp500_return*100:.2f}%',
-            f'{(agent_return - sp500_return)*100:.2f}%'
+            f'{(agent_return - sp500_return)*100:.2f}%',
+            f'{(agent_return - equal_weighted_return)*100:.2f}%'
         ]
     }
     
@@ -418,13 +446,26 @@ if __name__ == "__main__":
     print(f"\nAgent Test Results (2019):")
     print(f"  Final Portfolio Value: ${final_value:,.2f}")
     print(f"  Total Return: {agent_return*100:.2f}%")
+    
+    print(f"\nEqual-Weighted Portfolio (2019):")
+    print(f"  Final Portfolio Value: ${equal_weighted_value:,.2f}")
+    print(f"  Total Return: {equal_weighted_return*100:.2f}%")
+    
     print(f"\nS&P 500 Benchmark (2019):")
     print(f"  Start Price: ${sp500_start:,.2f}")
     print(f"  End Price:   ${sp500_end:,.2f}")
     print(f"  Total Return: {sp500_return*100:.2f}%")
-    print(f"\nOutperformance: {(agent_return - sp500_return)*100:.2f}%")
+    
+    print(f"\nOutperformance:")
+    print(f"  vs S&P 500: {(agent_return - sp500_return)*100:.2f}%")
+    print(f"  vs Equal-Weighted: {(agent_return - equal_weighted_return)*100:.2f}%")
     
     if agent_return > sp500_return:
         print("\nAgent outperformed the S&P 500!")
     else:
         print("\nAgent underperformed the S&P 500.")
+        
+    if agent_return > equal_weighted_return:
+        print("Agent outperformed the Equal-Weighted Portfolio!")
+    else:
+        print("Agent underperformed the Equal-Weighted Portfolio.")

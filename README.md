@@ -14,12 +14,11 @@ experimental repo for Fin Analytics and ML at UCL
 - Problems
     - Action definition: buy/sell, but how much? 
     - Different market periods: stable, crisis, etc.
+    - explain time periods
+    - no transaction costs
 
 ### Choices
-- explain why 2015 - 2019 is a stable period
-- no transaction costs
-- agent has 2 layers of actions (buy/sell/hold) and quantity level (25% or 50%)
-- 
+
 
 ### Methodology (RL & Q-Learning)
 - (Gabriella / Ariq) What RL is?
@@ -28,8 +27,7 @@ experimental repo for Fin Analytics and ML at UCL
     - explorations vs exploitation trade-off
     - Q-learning is suitable in cases where the specific probabilities, rewards, and penalties are not completely known, as the agent traverses the environment repeatedly to learn the best strategy by itself. (1)
 - (Rickey) Types of Q-Learning
-- (Iman) Code Implementation
-
+- (Iman) Code / Model Implementation
 
 ### (Aadhira/Iman) Results
 - Tables
@@ -169,3 +167,30 @@ While 2017 was exceptionally stable, 2018-2019 had some notable volatility. Howe
 - implement comparison of equal weighted portfolio for test
 - implement comparison with buy and hold of S&P
 - add visualisation
+
+
+#### Explanations of Episodes
+
+results from all episodes contribute to the agent's learning because:
+Q-table Persistence:
+The Q-table is maintained across all episodes
+Each episode builds upon the knowledge from previous episodes
+The Q-values are continuously updated based on new experiences
+Learning Process:
+Each episode starts fresh (reset environment)
+But the Q-table retains all previous learning
+The agent uses both:
+Previous knowledge (old_value)
+New experiences (reward + future value)
+Update Formula Components:
+(1 - learning_rate) * old_value: Retains previous knowledge
+learning_rate * (reward + discount_factor * next_max): Incorporates new learning
+learning_rate = 0.2 means 20% new learning, 80% previous knowledge
+Exploration vs Exploitation:
+Early episodes: High exploration (random actions)
+Later episodes: More exploitation (using learned Q-values)
+But always some exploration (min_exploration_rate = 0.02)
+This is why the agent improves over time:
+Early episodes: Mostly random actions, building initial Q-values
+Middle episodes: Mix of exploration and exploitation, refining Q-values
+Later episodes: Mostly exploitation with some exploration, fine-tuning strategy
