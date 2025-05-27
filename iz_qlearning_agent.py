@@ -118,8 +118,8 @@ class StockTradingEnv:
         actions: List of (action_type, quantity_level) for each stock
         action_type: 0=hold, 1=buy, 2=sell
         quantity_level: 
-            For buy: 1=25% of max position value, 2=50% of max position value
-            For sell: 1=25% of current position, 2=50% of current position, 3=100% of current position
+            For buy: 1=5%, 2=15%, 3=25%, 4=35%, 5=50% of max position value
+            For sell: 1=5%, 2=15%, 3=25%, 4=35%, 5=50% of current position
         """
         if self.current_step >= len(self.prices[self.symbols[0]]) - 1:
             return self._get_state(), 0, True, {'portfolio_value': self._get_portfolio_value()}
@@ -138,9 +138,15 @@ class StockTradingEnv:
                 
                 # Calculate buy amount based on quantity level
                 if qty_level == 1:
+                    buy_value = available_position_value * 0.05
+                elif qty_level == 2:
+                    buy_value = available_position_value * 0.15
+                elif qty_level == 3:
                     buy_value = available_position_value * 0.25
-                else: # qty_level == 2:
-                    buy_value = available_position_value * 0.5
+                elif qty_level == 4:
+                    buy_value = available_position_value * 0.35
+                else:  # qty_level == 5
+                    buy_value = available_position_value * 0.50
                 
                 # Ensure we don't exceed available cash
                 buy_value = min(buy_value, self.balance)
@@ -156,11 +162,15 @@ class StockTradingEnv:
                 if current_shares > 0:
                     # Calculate sell amount based on quantity level
                     if qty_level == 1:
-                        shares_to_sell = int(current_shares * 0.25)
+                        shares_to_sell = int(current_shares * 0.05)
                     elif qty_level == 2:
-                        shares_to_sell = int(current_shares * 0.5)
-                    else:  # qty_level == 3
-                        shares_to_sell = current_shares
+                        shares_to_sell = int(current_shares * 0.15)
+                    elif qty_level == 3:
+                        shares_to_sell = int(current_shares * 0.25)
+                    elif qty_level == 4:
+                        shares_to_sell = int(current_shares * 0.35)
+                    else:  # qty_level == 5
+                        shares_to_sell = int(current_shares * 0.50)
                     
                     if shares_to_sell > 0:
                         revenue = shares_to_sell * price
@@ -214,13 +224,13 @@ class QLearningAgent:
                  learning_rate: float = 0.1,
                  discount_factor: float = 0.95,
                  exploration_rate: float = 1.0,
-                 exploration_decay: float = 0.995,
+                 exploration_decay: float = 0.999,
                  min_exploration_rate: float = 0.01):
         """
         Initialize the Q-learning agent.
         """
         self.state_size = state_size
-        self.action_size = action_size  # Now action_size = 9 (3 action types x 3 quantity levels)
+        self.action_size = action_size  # Now action_size = 15 (3 action types x 5 quantity levels)
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
         self.exploration_rate = exploration_rate
@@ -244,8 +254,8 @@ class QLearningAgent:
         else:
             action_idx = np.argmax(self.q_table[state_key])
         # Map action_idx to (action_type, quantity_level)
-        action_type = action_idx // 3  # 0=hold, 1=buy, 2=sell
-        quantity_level = (action_idx % 3) + 1  # 1=25%, 2=50%, 3=100% (for sell)
+        action_type = action_idx // 5  # 0=hold, 1=buy, 2=sell
+        quantity_level = (action_idx % 5) + 1  # 1=5%, 2=15%, 3=25%, 4=35%, 5=50%
         return (action_type, quantity_level)
     
     def update(self, state: np.ndarray, action: Tuple[int, int], reward: float, next_state: np.ndarray):
@@ -256,7 +266,7 @@ class QLearningAgent:
         if next_state_key not in self.q_table:
             self.q_table[next_state_key] = np.zeros(self.action_size)
         # Map (action_type, quantity_level) to action_idx
-        action_idx = action[0] * 3 + (action[1] - 1)
+        action_idx = action[0] * 5 + (action[1] - 1)
         old_value = self.q_table[state_key][action_idx]
         next_max = np.max(self.q_table[next_state_key])
         new_value = (1 - self.learning_rate) * old_value + \
@@ -318,8 +328,8 @@ def test_agent(env: StockTradingEnv, agent: QLearningAgent) -> Tuple[float, pd.D
                 action_idx = np.argmax(agent.q_table[state_key])
             else:
                 action_idx = 0  # default to hold
-            action_type = action_idx // 3
-            quantity_level = (action_idx % 3) + 1
+            action_type = action_idx // 5
+            quantity_level = (action_idx % 5) + 1
             actions.append((action_type, quantity_level))
         
         # Record positions before step
@@ -380,17 +390,17 @@ if __name__ == "__main__":
     env.prices = {symbol: env.data[symbol]['data']['Close'] for symbol in env.symbols}
     env.returns = {symbol: env.prices[symbol].pct_change().fillna(0) for symbol in env.symbols}
     state_size = len(env._get_state())
-    action_size = 9  # 3 action types x 3 quantity levels
+    action_size = 15  # 3 action types x 5 quantity levels
     agent = QLearningAgent(
         state_size=state_size,
         action_size=action_size,
-        learning_rate=0.2,
+        learning_rate=0.1,
         discount_factor=0.99,
         exploration_rate=1.0,
-        exploration_decay=0.9995,     # Slower decay
-        min_exploration_rate=0.02,      # Higher minimum exploration
+        exploration_decay=0.9995,     # Slower decay to maintain exploration longer
+        min_exploration_rate=0.05,    # Higher minimum exploration to prevent getting stuck
     )
-    train_agent(env, agent, episodes=1000)
+    train_agent(env, agent, episodes=2000)  # More episodes for better learning
     # Save Q-table
     with open(os.path.join(results_dir, "q_table.pkl"), "wb") as f:
         pickle.dump(agent.q_table, f)

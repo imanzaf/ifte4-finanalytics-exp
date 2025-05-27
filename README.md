@@ -14,8 +14,8 @@ experimental repo for Fin Analytics and ML at UCL
 - Problems
     - Action definition: buy/sell, but how much? 
     - Different market periods: stable, crisis, etc.
-    - explain time periods
-    - no transaction costs
+        - explain time periods
+        - no transaction costs
 
 ### Choices
 
@@ -32,6 +32,7 @@ experimental repo for Fin Analytics and ML at UCL
 ### (Aadhira/Iman) Results
 - Tables
 - Visualisations
+- results from different exploration rates? decay rates?
 
 
 ## Reference Links

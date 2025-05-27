@@ -6,11 +6,9 @@ import os
 
 def calculate_equal_weighted_returns(position_history, stocks):
     """Calculate returns for an equal-weighted portfolio"""
-    print("\n=== Stock Data Download Debug ===")
     print(f"Date range: {position_history.index[0]} to {position_history.index[-1]}")
     
     position_history.index = pd.to_datetime(position_history.index, utc=True).tz_localize(None)
-    print(f"Position history index: {position_history.index}")
 
     # Get stock data for all stocks
     stock_data = {}
@@ -24,13 +22,6 @@ def calculate_equal_weighted_returns(position_history, stocks):
                 # Convert index to datetime without timezone
                 data.index = pd.to_datetime(data.index)
                 stock_data[stock] = data
-                print(f"\n{stock} data summary:")
-                print(f"Shape: {data.shape}")
-                print("First few rows:")
-                print(data.head())
-                print("\nLast few rows:")
-                print(data.tail())
-                print(f"Null values in Close: {data['Close'].isnull().sum()}")
             else:
                 print(f"Warning: No data downloaded for {stock}")
         except Exception as e:
@@ -69,30 +60,18 @@ def calculate_equal_weighted_returns(position_history, stocks):
 def plot_portfolio_comparison():
     # Load position history
     position_history = pd.read_csv('results/position_history.csv', index_col='date', parse_dates=True)
-    print("\n=== Position History Debug ===")
-    print(f"Shape: {position_history.shape}")
-    print("First few rows:")
-    print(position_history.head())
-    print("\nLast few rows:")
-    print(position_history.tail())
     
     # Calculate daily returns for agent's portfolio
     position_history['portfolio_return'] = position_history['portfolio_value'].pct_change().fillna(0)
     position_history['cumulative_return'] = (1 + position_history['portfolio_return']).cumprod() - 1
     
     # Get S&P 500 data for the same period
-    print("\n=== S&P 500 Data Debug ===")
     sp500 = yf.download('^GSPC', 
                        start=position_history.index[0].date(),  # Convert to date without timezone
                        end=position_history.index[-1].date(),   # Convert to date without timezone
                        progress=False)
     # Convert index to datetime without timezone
     sp500.index = pd.to_datetime(sp500.index)
-    print(f"Shape: {sp500.shape}")
-    print("First few rows:")
-    print(sp500.head())
-    print("\nLast few rows:")
-    print(sp500.tail())
     
     # Calculate S&P 500 returns
     sp500['return'] = sp500['Close'].pct_change().fillna(0)
