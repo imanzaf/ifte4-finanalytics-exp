@@ -195,3 +195,18 @@ This is why the agent improves over time:
 Early episodes: Mostly random actions, building initial Q-values
 Middle episodes: Mix of exploration and exploitation, refining Q-values
 Later episodes: Mostly exploitation with some exploration, fine-tuning strategy
+
+
+# position sizing choices
+Minimum Position Size:
+Added a minimum position value of $100
+This prevents tiny positions that could lead to rounding issues
+Helps maintain consistent position sizing across different initial balances
+Position Sizing:
+Adjusted the position sizes to be more meaningful:
+Buy: 15%, 25%, 35%, 45%, 50%
+Sell: 25%, 35%, 45%, 55%, 100%
+These sizes are more practical for real trading
+Execution Logic:
+Only execute trades if they meet the minimum position size
+This prevents tiny trades that could skew returns

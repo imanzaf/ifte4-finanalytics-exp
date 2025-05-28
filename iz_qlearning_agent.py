@@ -118,8 +118,8 @@ class StockTradingEnv:
         actions: List of (action_type, quantity_level) for each stock
         action_type: 0=hold, 1=buy, 2=sell
         quantity_level: 
-            For buy: 1=5%, 2=15%, 3=25%, 4=35%, 5=50% of max position value
-            For sell: 1=5%, 2=15%, 3=25%, 4=35%, 5=50% of current position
+            For buy: 1=15%, 2=25%, 3=35%, 4=45%, 5=50% of max position value
+            For sell: 1=25%, 2=35%, 3=45%, 4=55%, 5=100% of current position
         """
         if self.current_step >= len(self.prices[self.symbols[0]]) - 1:
             return self._get_state(), 0, True, {'portfolio_value': self._get_portfolio_value()}
@@ -138,40 +138,44 @@ class StockTradingEnv:
                 
                 # Calculate buy amount based on quantity level
                 if qty_level == 1:
-                    buy_value = available_position_value * 0.05
-                elif qty_level == 2:
                     buy_value = available_position_value * 0.15
-                elif qty_level == 3:
+                elif qty_level == 2:
                     buy_value = available_position_value * 0.25
-                elif qty_level == 4:
+                elif qty_level == 3:
                     buy_value = available_position_value * 0.35
+                elif qty_level == 4:
+                    buy_value = available_position_value * 0.45
                 else:  # qty_level == 5
                     buy_value = available_position_value * 0.50
                 
                 # Ensure we don't exceed available cash
                 buy_value = min(buy_value, self.balance)
-                shares_to_buy = int(buy_value / price)
                 
-                if shares_to_buy > 0:
-                    cost = shares_to_buy * price
-                    self.positions[symbol] += shares_to_buy
-                    self.balance -= cost
+                # Calculate shares with minimum position size check
+                min_position_value = 100  # Minimum $100 position
+                if buy_value >= min_position_value:
+                    shares_to_buy = int(buy_value / price)
+                    if shares_to_buy > 0:
+                        cost = shares_to_buy * price
+                        self.positions[symbol] += shares_to_buy
+                        self.balance -= cost
                     
             elif action == 2:  # Sell
                 current_shares = self.positions[symbol]
                 if current_shares > 0:
                     # Calculate sell amount based on quantity level
                     if qty_level == 1:
-                        shares_to_sell = int(current_shares * 0.05)
-                    elif qty_level == 2:
-                        shares_to_sell = int(current_shares * 0.15)
-                    elif qty_level == 3:
                         shares_to_sell = int(current_shares * 0.25)
-                    elif qty_level == 4:
+                    elif qty_level == 2:
                         shares_to_sell = int(current_shares * 0.35)
+                    elif qty_level == 3:
+                        shares_to_sell = int(current_shares * 0.45)
+                    elif qty_level == 4:
+                        shares_to_sell = int(current_shares * 0.55)
                     else:  # qty_level == 5
-                        shares_to_sell = int(current_shares * 0.50)
+                        shares_to_sell = current_shares
                     
+                    # Only execute if position size is meaningful
                     if shares_to_sell > 0:
                         revenue = shares_to_sell * price
                         self.positions[symbol] -= shares_to_sell
@@ -385,7 +389,7 @@ if __name__ == "__main__":
     stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA"]
     train_start = datetime(2017, 1, 1)
     train_end = datetime(2018, 12, 31)
-    env = StockTradingEnv(stocks=stocks, initial_balance=100000, max_position=0.5)
+    env = StockTradingEnv(stocks=stocks, initial_balance=10000, max_position=0.5)
     env.symbols, env.data = get_stock_data(stocks=stocks, start_date=train_start, end_date=train_end)
     env.prices = {symbol: env.data[symbol]['data']['Close'] for symbol in env.symbols}
     env.returns = {symbol: env.prices[symbol].pct_change().fillna(0) for symbol in env.symbols}
@@ -400,7 +404,7 @@ if __name__ == "__main__":
         exploration_decay=0.9995,     # Slower decay to maintain exploration longer
         min_exploration_rate=0.05,    # Higher minimum exploration to prevent getting stuck
     )
-    train_agent(env, agent, episodes=2000)  # More episodes for better learning
+    train_agent(env, agent, episodes=1000)  # More episodes for better learning
     # Save Q-table
     with open(os.path.join(results_dir, "q_table.pkl"), "wb") as f:
         pickle.dump(agent.q_table, f)
@@ -408,7 +412,7 @@ if __name__ == "__main__":
     # TESTING
     test_start = datetime(2019, 1, 1)
     test_end = datetime(2019, 12, 31)
-    test_env = StockTradingEnv(stocks=stocks, initial_balance=100000, max_position=0.5)
+    test_env = StockTradingEnv(stocks=stocks, initial_balance=10000, max_position=0.5)
     test_env.symbols, test_env.data = get_stock_data(stocks=stocks, start_date=test_start, end_date=test_end)
     test_env.prices = {symbol: test_env.data[symbol]['data']['Close'] for symbol in test_env.symbols}
     test_env.returns = {symbol: test_env.prices[symbol].pct_change().fillna(0) for symbol in test_env.symbols}
@@ -417,7 +421,7 @@ if __name__ == "__main__":
         agent.q_table = pickle.load(f)
     
     final_value, position_history = test_agent(test_env, agent)
-    agent_return = (final_value - 100000) / 100000
+    agent_return = (final_value - 10000) / 10000
     
     # Calculate equal-weighted portfolio performance
     equal_weighted_value, equal_weighted_return = calculate_equal_weighted_return(test_env)
@@ -435,7 +439,7 @@ if __name__ == "__main__":
                   'S&P 500 Start Price', 'S&P 500 End Price', 'S&P 500 Return',
                   'Outperformance vs S&P 500', 'Outperformance vs Equal-Weighted'],
         'Value': [
-            f'${100000:,.2f}',
+            f'${10000:,.2f}',
             f'${final_value:,.2f}',
             f'{agent_return*100:.2f}%',
             f'${equal_weighted_value:,.2f}',
