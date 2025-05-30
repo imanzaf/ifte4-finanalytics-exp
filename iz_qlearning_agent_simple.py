@@ -1,7 +1,7 @@
 """
-simple q-learning agent for stock trading
+Simple q-learning agent for stock trading
 
-- state: portfolio value, position size, price change
+- state: portfolio value, position size
 - action: hold, buy, sell, quantity level (25% or 50%)
 - reward: portfolio value change
 - done: reached the end of the data
@@ -18,7 +18,6 @@ import warnings
 import os
 
 warnings.filterwarnings("ignore")
-
 
 class StockTradingEnv:
     def __init__(self, 
@@ -40,12 +39,6 @@ class StockTradingEnv:
             
         self.prices = {symbol: self.data[symbol]['data']['Close'] for symbol in self.symbols}
         
-        # Calculate returns for each stock
-        self.returns = {}
-        for symbol in self.symbols:
-            prices = self.prices[symbol]
-            self.returns[symbol] = prices.pct_change().fillna(0)
-        
         # Verify data
         for symbol in self.symbols:
             if len(self.prices[symbol]) == 0:
@@ -61,54 +54,24 @@ class StockTradingEnv:
         self.positions = {symbol: 0 for symbol in self.symbols}
         self.current_step = 0
         self.portfolio_value_history = [self.initial_balance]
-        self.last_action = None
         return self._get_state()
     
     def _get_state(self) -> np.ndarray:
         """Get the current state representation."""
         state = []
         
-        # Add portfolio information (discretized)
-        # Calculate portfolio value and convert to a discrete bucket (0-4)
-        # Bucket 0: Portfolio < 20% of initial balance
-        # Bucket 1: 20-40% of initial balance
-        # Bucket 2: 40-60% of initial balance
-        # Bucket 3: 60-80% of initial balance
-        # Bucket 4: 80-100%+ of initial balance
+        # Add portfolio value (discretized into 5 buckets)
         portfolio_value = self._get_portfolio_value()
         portfolio_ratio = portfolio_value / self.initial_balance
-        portfolio_bucket = min(int(portfolio_ratio * 5), 4)  # 5 buckets
+        portfolio_bucket = min(int(portfolio_ratio * 5), 4)
         state.append(portfolio_bucket)
         
-        # Add position information for each stock
+        # Add position information for each stock (discretized into 5 buckets)
         for symbol in self.symbols:
-            # Position size (discretized into 5 buckets)
-            # Bucket 0: Position < 20% of portfolio value
-            # Bucket 1: Position 20-40% of portfolio value
-            # Bucket 2: Position 40-60% of portfolio value
-            # Bucket 3: Position 60-80% of portfolio value
-            # Bucket 4: Position 80-100% of portfolio value
             position_value = self.positions[symbol] * self.prices[symbol][self.current_step]
-            position_ratio = position_value / portfolio_value
-            position_bucket = min(int(position_ratio * 5), 4)  # 5 buckets
+            position_ratio = position_value / portfolio_value if portfolio_value > 0 else 0
+            position_bucket = min(int(position_ratio * 5), 4)
             state.append(position_bucket)
-            
-            # Calculate price momentum using 3-day moving average
-            if self.current_step >= 3:
-                # Sum returns over last 3 days to get momentum
-                momentum = sum(self.returns[symbol][self.current_step-i] for i in range(1, 4))
-                # Convert momentum to discrete bucket (0-9)
-                #   Bucket 0: Strong negative momentum (< -0.1)
-                #   Bucket 1-4: Moderate to slight negative momentum (-0.1 to 0)
-                #   Bucket 5: Neutral momentum (0)
-                #   Bucket 6-9: Slight to strong positive momentum (0 to 0.1)
-                # Add 0.1 offset to center buckets around 0
-                # Multiply by 10 to spread values across buckets
-                momentum_bucket = min(int((momentum + 0.1) * 10), 9)
-            else:
-                # Default to neutral bucket (5) if not enough history
-                momentum_bucket = 5
-            state.append(momentum_bucket)
         
         return np.array(state)
     
@@ -117,9 +80,7 @@ class StockTradingEnv:
         Take a step in the environment.
         actions: List of (action_type, quantity_level) for each stock
         action_type: 0=hold, 1=buy, 2=sell
-        quantity_level: 
-            For buy: 1=15%, 2=25%, 3=35%, 4=45%, 5=50% of max position value
-            For sell: 1=25%, 2=35%, 3=45%, 4=55%, 5=100% of current position
+        quantity_level: 1=25%, 2=50% of max position value
         """
         if self.current_step >= len(self.prices[self.symbols[0]]) - 1:
             return self._get_state(), 0, True, {'portfolio_value': self._get_portfolio_value()}
@@ -137,23 +98,13 @@ class StockTradingEnv:
                 available_position_value = max_position_value - current_position_value
                 
                 # Calculate buy amount based on quantity level
-                if qty_level == 1:
-                    buy_value = available_position_value * 0.15
-                elif qty_level == 2:
-                    buy_value = available_position_value * 0.25
-                elif qty_level == 3:
-                    buy_value = available_position_value * 0.35
-                elif qty_level == 4:
-                    buy_value = available_position_value * 0.45
-                else:  # qty_level == 5
-                    buy_value = available_position_value * 0.50
+                buy_value = available_position_value * (0.25 if qty_level == 1 else 0.50)
                 
                 # Ensure we don't exceed available cash
                 buy_value = min(buy_value, self.balance)
                 
-                # Calculate shares with minimum position size check
-                min_position_value = 100  # Minimum $100 position
-                if buy_value >= min_position_value:
+                # Calculate shares
+                if buy_value >= 100:  # Minimum $100 position
                     shares_to_buy = int(buy_value / price)
                     if shares_to_buy > 0:
                         cost = shares_to_buy * price
@@ -164,47 +115,28 @@ class StockTradingEnv:
                 current_shares = self.positions[symbol]
                 if current_shares > 0:
                     # Calculate sell amount based on quantity level
-                    if qty_level == 1:
-                        shares_to_sell = int(current_shares * 0.25)
-                    elif qty_level == 2:
-                        shares_to_sell = int(current_shares * 0.35)
-                    elif qty_level == 3:
-                        shares_to_sell = int(current_shares * 0.45)
-                    elif qty_level == 4:
-                        shares_to_sell = int(current_shares * 0.55)
-                    else:  # qty_level == 5
-                        shares_to_sell = current_shares
+                    shares_to_sell = int(current_shares * (0.25 if qty_level == 1 else 0.50))
                     
-                    # Only execute if position size is meaningful
                     if shares_to_sell > 0:
                         revenue = shares_to_sell * price
                         self.positions[symbol] -= shares_to_sell
                         self.balance += revenue
-            # Hold does nothing
         
         # Move to next step
         self.current_step += 1
         
         # Calculate reward
         new_portfolio_value = self._get_portfolio_value()
-        value_change = (new_portfolio_value - old_portfolio_value) / old_portfolio_value
+        reward = (new_portfolio_value - old_portfolio_value) / old_portfolio_value * 100
         
-        # Penalty for holding too much cash (scaled by portfolio value)
+        # Add small penalties to encourage better behavior
+        if action != 0:  # If not holding
+            reward -= 0.05  # Smaller penalty for trading
+        
+        # Add penalty for holding too much cash
         cash_ratio = self.balance / new_portfolio_value
-        cash_penalty = -0.0001 if cash_ratio > 0.5 else 0
-        
-        # Penalty for too many transactions (scaled by portfolio value)
-        transaction_penalty = -0.00001 * sum(1 for a, q in actions if a != 0)
-        
-        # Penalty for not diversifying (must have at least 2 stocks invested)
-        invested_stocks = sum(1 for s in self.symbols if self.positions[s] > 0)
-        diversification_penalty = -0.001 if invested_stocks < 2 else 0
-        
-        # Combine rewards and penalties
-        reward = value_change + cash_penalty + transaction_penalty + diversification_penalty
-        
-        # Scale reward to be more meaningful
-        reward = reward * 100  # Scale up to make rewards more significant
+        if cash_ratio > 0.5:  # If more than 50% in cash
+            reward -= 0.1
         
         self.portfolio_value_history.append(new_portfolio_value)
         
@@ -234,7 +166,7 @@ class QLearningAgent:
         Initialize the Q-learning agent.
         """
         self.state_size = state_size
-        self.action_size = action_size  # Now action_size = 15 (3 action types x 5 quantity levels)
+        self.action_size = action_size  # Now action_size = 6 (3 action types x 2 quantity levels)
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
         self.exploration_rate = exploration_rate
@@ -258,8 +190,8 @@ class QLearningAgent:
         else:
             action_idx = np.argmax(self.q_table[state_key])
         # Map action_idx to (action_type, quantity_level)
-        action_type = action_idx // 5  # 0=hold, 1=buy, 2=sell
-        quantity_level = (action_idx % 5) + 1  # 1=5%, 2=15%, 3=25%, 4=35%, 5=50%
+        action_type = action_idx // 2  # 0=hold, 1=buy, 2=sell
+        quantity_level = (action_idx % 2) + 1  # 1=25%, 2=50%
         return (action_type, quantity_level)
     
     def update(self, state: np.ndarray, action: Tuple[int, int], reward: float, next_state: np.ndarray):
@@ -270,7 +202,7 @@ class QLearningAgent:
         if next_state_key not in self.q_table:
             self.q_table[next_state_key] = np.zeros(self.action_size)
         # Map (action_type, quantity_level) to action_idx
-        action_idx = action[0] * 5 + (action[1] - 1)
+        action_idx = action[0] * 2 + (action[1] - 1)
         old_value = self.q_table[state_key][action_idx]
         next_max = np.max(self.q_table[next_state_key])
         new_value = (1 - self.learning_rate) * old_value + \
@@ -289,13 +221,17 @@ def train_agent(env: StockTradingEnv, agent: QLearningAgent, episodes: int = 100
         total_reward = 0
         done = False
         while not done:
-            # Get (action_type, quantity_level) for each stock
             actions = [agent.get_action(state) for _ in range(len(env.stocks))]
             next_state, reward, done, info = env.step(actions)
             for action in actions:
                 agent.update(state, action, reward, next_state)
             state = next_state
             total_reward += reward
+            
+            # Debug print for first episode
+            if episode == 0:
+                print(f"Step {env.current_step}: Actions={actions}, Reward={reward:.2f}, Portfolio={info['portfolio_value']:.2f}")
+        
         final_portfolio_value = info['portfolio_value']
         episode_return = (final_portfolio_value - env.initial_balance) / env.initial_balance
         episode_rewards.append(total_reward)
@@ -311,23 +247,10 @@ def train_agent(env: StockTradingEnv, agent: QLearningAgent, episodes: int = 100
                   f"Avg Return: {avg_return:.3f}, "
                   f"Final Portfolio Value: ${final_portfolio_value:,.2f}, "
                   f"Exploration Rate: {agent.exploration_rate:.3f}")
-    
-    # Print training period summary
-    final_training_value = final_portfolio_value
-    training_return = (final_training_value - env.initial_balance) / env.initial_balance
-    print(f"\nTraining Period Summary:")
-    print(f"  Best Episode: {best_episode + 1}")
-    print(f"  Best Portfolio Value: ${best_portfolio_value:,.2f}")
-    print(f"  Final Portfolio Value: ${final_training_value:,.2f}")
-    print(f"  Total Return: {training_return*100:.2f}%")
-    print(f"  Average Return (last 100 episodes): {avg_return*100:.2f}%")
-    
-    return best_portfolio_value, training_return
 
-def test_agent(env: StockTradingEnv, agent: QLearningAgent, continue_learning: bool = True) -> Tuple[float, pd.DataFrame]:
+def test_agent(env: StockTradingEnv, agent: QLearningAgent) -> Tuple[float, pd.DataFrame]:
     """
-    Test the trained agent on new data.
-    If continue_learning is True, the agent will continue to learn during testing.
+    Test the trained agent on new data (greedy policy, no learning).
     Returns the final portfolio value and position history.
     """
     state = env.reset()
@@ -345,8 +268,9 @@ def test_agent(env: StockTradingEnv, agent: QLearningAgent, continue_learning: b
                 action_idx = np.argmax(agent.q_table[state_key])
             else:
                 action_idx = 0  # default to hold
-            action_type = action_idx // 5
-            quantity_level = (action_idx % 5) + 1
+            # Map action_idx to (action_type, quantity_level)
+            action_type = action_idx // 2  # 0=hold, 1=buy, 2=sell
+            quantity_level = (action_idx % 2) + 1  # 1=25%, 2=50%
             actions.append((action_type, quantity_level))
         
         # Record positions before step
@@ -360,12 +284,6 @@ def test_agent(env: StockTradingEnv, agent: QLearningAgent, continue_learning: b
         position_history.append(current_positions)
         
         next_state, reward, done, info = env.step(actions)
-        
-        # Update Q-values if continuing to learn
-        if continue_learning:
-            for action in actions:
-                agent.update(state, action, reward, next_state)
-        
         state = next_state
     
     # Convert position history to DataFrame
@@ -374,29 +292,6 @@ def test_agent(env: StockTradingEnv, agent: QLearningAgent, continue_learning: b
     
     final_value = info['portfolio_value']
     return final_value, position_df
-
-def calculate_equal_weighted_return(env: StockTradingEnv) -> Tuple[float, float]:
-    """
-    Calculate the return of an equal-weighted portfolio of all stocks.
-    Returns (final_value, total_return)
-    """
-    initial_balance = env.initial_balance
-    balance_per_stock = initial_balance / len(env.symbols)
-    
-    # Calculate initial shares for each stock
-    initial_shares = {}
-    for symbol in env.symbols:
-        initial_price = env.prices[symbol][0]
-        initial_shares[symbol] = int(balance_per_stock / initial_price)
-    
-    # Calculate final value
-    final_value = 0
-    for symbol in env.symbols:
-        final_price = env.prices[symbol][-1]
-        final_value += initial_shares[symbol] * final_price
-    
-    total_return = (final_value - initial_balance) / initial_balance
-    return final_value, total_return
 
 if __name__ == "__main__":
     # Create results directory if it doesn't exist
@@ -407,41 +302,37 @@ if __name__ == "__main__":
     # TRAINING
     stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA"]
     train_start = datetime(2017, 1, 1)
-    train_end = datetime(2019, 12, 31)
+    train_end = datetime(2018, 12, 31)
     env = StockTradingEnv(stocks=stocks, initial_balance=10000, max_position=0.5)
     env.symbols, env.data = get_stock_data(stocks=stocks, start_date=train_start, end_date=train_end)
     env.prices = {symbol: env.data[symbol]['data']['Close'] for symbol in env.symbols}
-    env.returns = {symbol: env.prices[symbol].pct_change().fillna(0) for symbol in env.symbols}
     state_size = len(env._get_state())
-    action_size = 15  # 3 action types x 5 quantity levels
+    action_size = 6  # 3 action types x 2 quantity levels
     agent = QLearningAgent(
         state_size=state_size,
         action_size=action_size,
-        learning_rate=0.1,
-        discount_factor=0.99,
+        learning_rate=0.1,  # Increased learning rate
+        discount_factor=0.95,  # Reduced discount factor
         exploration_rate=1.0,
-        exploration_decay=0.9995,     # Slower decay to maintain exploration longer
-        min_exploration_rate=0.05,    # Higher minimum exploration to prevent getting stuck
+        exploration_decay=0.999,  # Faster decay
+        min_exploration_rate=0.1,  # Higher minimum exploration
     )
-    best_training_value, training_return = train_agent(env, agent, episodes=1000)  # More episodes for better learning
+    train_agent(env, agent, episodes=2000)
     # Save Q-table
     with open(os.path.join(results_dir, "q_table.pkl"), "wb") as f:
         pickle.dump(agent.q_table, f)
 
-    TESTING
+    # TESTING
     test_start = datetime(2019, 1, 1)
     test_end = datetime(2019, 12, 31)
     test_env = StockTradingEnv(stocks=stocks, initial_balance=10000, max_position=0.5)
     test_env.symbols, test_env.data = get_stock_data(stocks=stocks, start_date=test_start, end_date=test_end)
     test_env.prices = {symbol: test_env.data[symbol]['data']['Close'] for symbol in test_env.symbols}
-    test_env.returns = {symbol: test_env.prices[symbol].pct_change().fillna(0) for symbol in test_env.symbols}
-    
-    # Load Q-table and continue learning during testing
+    # Load Q-table
     with open(os.path.join(results_dir, "q_table.pkl"), "rb") as f:
         agent.q_table = pickle.load(f)
     
-    # Test with continued learning
-    final_value, position_history = test_agent(test_env, agent, continue_learning=False)
+    final_value, position_history = test_agent(test_env, agent)
     agent_return = (final_value - 10000) / 10000
     
     # Save position history
